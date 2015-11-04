@@ -1,11 +1,14 @@
 import Data.Graph.Inductive
 import System.Random
 
+-- get the coords, given its cell index
 from_ind r c i = ((i-1) `div` c, (i-1) `mod` c)
 to_ind r c (ri, ci) = ri*c + ci + 1
 
+-- check whether coords is inside the board
 in_bound r c (ri, ci) = ri >= 0 && ci >= 0 && ri < r && ci < c
 
+-- get the list of valid jumps for the knight given its cell index
 find_jumps r c i = let (ri, ci) = from_ind r c i
                    in map (to_ind r c)
                           (filter (in_bound r c)
@@ -14,34 +17,54 @@ find_jumps r c i = let (ri, ci) = from_ind r c i
                                    (ri+1, ci-2), (ri+1, ci+2),
                                    (ri+2, ci-1), (ri+2, ci+1)])
 
+-- get the list of edges of valid knight jumps as a list of pairs
 get_edges r c = concat [map (\ri -> (i, ri))
                             (find_jumps r c i) | i <- [1..r*c]]
 
-mk_board :: Int -> Int -> (Gr () ())
-mk_board r c = mkGraph (zip [1 .. r*c] (repeat ()))
+-- make a Graph datastructure representing the board
+mk_board :: Int -> Int -> (Gr (Int, Int) ())
+mk_board r c = mkGraph (map (\i -> (i, from_ind r c i))
+                            [1 .. r*c])
                        (map (\(i, j) -> (i, j, ()))
                             (get_edges r c))
 
+-- For use in map.
+-- return the extended third argument which includes n if n has degree d
+-- else if n has smaller degree, return only n and its degree
+-- else if n has bigger degree, discard n and simply return third argument
 get_min g n (Just (d, ns)) | outdeg g n == d = Just (d, n:ns)
                            | outdeg g n < d = Just (outdeg g n, [n])
                            | otherwise = Just (d, ns)
 get_min g n Nothing = Just (outdeg g n, [n])
 
+-- return a list of edges which have minimum degree among the ones given
 select_hop g ns = foldr (get_min g) Nothing ns
 
-next_hop g n rgen = let (c, g') = match n g
-                        Just (_, _, _, out_gns) = c
-                        out_ns = (map (\(_, n') -> n') out_gns)
-                    in case select_hop g' out_ns of
-                        Just (_, min_hops) -> let (idx, rgen') = randomR (0, length min_hops - 1) rgen
-                                              in (g', Just (min_hops !! idx), rgen')
-                        Nothing -> (g', Nothing, rgen)
+-- rng is a random number generator
+-- return a random element from a list, along with the new rng
+select_rand l rng = let (idx, rng') = randomR (0, length l - 1) rng
+                    in (l !! idx, rng')
 
-hop_seq g n rgen = case next_hop g n rgen of
-                   (g', Just n', rgen') -> let (path, found, rgen'') = hop_seq g' n' rgen'
-                                           in (n:path, found, rgen'')
-                   (g', Nothing, rgen') -> ([n], isEmpty g', rgen')
+-- the knight currently at n hops to another node. A new graph g' which
+-- has n removed will be returned, along with knight's new position.
+-- If the knight was at a dead end, Nothing will be returned
+next_hop g n rng = let (c, g') = match n g
+                       Just (_, _, _, out_gns) = c
+                       out_ns = (map snd out_gns)
+                   in case select_hop g' out_ns of
+                      Just (_, min_hops) -> let (n', rng') = select_rand min_hops rng
+                                            in (g', Just n', rng')
+                      Nothing -> (g', Nothing, rng)
 
-iter_find g 1 rgen = hop_seq g 1 rgen
-iter_find g tries rgen = let (path, found, rgen') = hop_seq g 1 rgen
-                         in if found then (path, found, rgen') else iter_find g (tries - 1) rgen'
+-- returns a sequence of hops starting from n, and whether it was a knight's tour
+hop_seq g n rng = case next_hop g n rng of
+                   (g', Just n', rng') -> let (path, found, rng'') = hop_seq g' n' rng'
+                                           in (n:path, found, rng'')
+                   (g', Nothing, rng') -> ([n], isEmpty g', rng')
+
+-- find a knights tour by trial and error, with at most `tries` trials
+iter_find g 1 rng = hop_seq g 1 rng
+iter_find g tries rng = let (path, found, rng') = hop_seq g 1 rng
+                         in if found
+                            then (path, found, rng')
+                            else iter_find g (tries - 1) rng'
