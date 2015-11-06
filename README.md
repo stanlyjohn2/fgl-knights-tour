@@ -8,9 +8,7 @@
 ## Usage
 
 ```haskell
-let gen1 = mkStdGen 1
-let board = mk_board 8 8
-let (path, found, gen2) = hop_seq board gen1
--- if not found, try:
-let (path, found, gen3) = iter_find board 10 gen2
+knights_tour 8 8
+-- if not found (very unlikely for boards smaller than 80x80), try:
+let (found, path, n_tries) = knights_tour_ext 8 8 1 16 1
 ```

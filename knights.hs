@@ -52,19 +52,27 @@ next_hop g n rng = let (c, g') = match n g
                        Just (_, _, _, out_gns) = c
                        out_ns = (map snd out_gns)
                    in case select_hop g' out_ns of
-                      Just (_, min_hops) -> let (n', rng') = select_rand min_hops rng
-                                            in (g', Just n', rng')
-                      Nothing -> (g', Nothing, rng)
+                        Just (_, min_hops) -> let (n', rng') = select_rand min_hops rng
+                                              in (Just n', g', rng')
+                        Nothing -> (Nothing, g', rng)
 
 -- returns a sequence of hops starting from n, and whether it was a knight's tour
 hop_seq g n rng = case next_hop g n rng of
-                   (g', Just n', rng') -> let (path, found, rng'') = hop_seq g' n' rng'
-                                           in (n:path, found, rng'')
-                   (g', Nothing, rng') -> ([n], isEmpty g', rng')
+                    (Just n', g', rng') -> let (found, path, rng'') = hop_seq g' n' rng'
+                                           in (found, n:path, rng'')
+                    (Nothing, g', rng') -> (isEmpty g', [n], rng')
 
 -- find a knights tour by trial and error, with at most `tries` trials
-iter_find g 1 rng = hop_seq g 1 rng
-iter_find g tries rng = let (path, found, rng') = hop_seq g 1 rng
+iter_find g n tries rng = let (found, path, rng') = hop_seq g n rng
+                          in if found || tries == 1
+                             then (found, path, tries - 1, rng')
+                             else iter_find g n (tries - 1) rng'
+
+knights_tour_ext rows cols start tries seed =
+    let (found, path, tries_left, _) = iter_find (mk_board rows cols) start tries (mkStdGen seed)
+    in (found, path, tries - tries_left)
+
+knights_tour rows cols = let (found, path, n_tries) = knights_tour_ext rows cols 1 16 1
                          in if found
-                            then (path, found, rng')
-                            else iter_find g (tries - 1) rng'
+                            then Just (map (from_ind rows cols) path)
+                            else Nothing
